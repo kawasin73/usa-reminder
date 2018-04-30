@@ -1,12 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/line/line-bot-sdk-go/linebot"
 )
+
+var timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
 
 func main() {
 	bot, err := linebot.New(
@@ -32,8 +36,8 @@ func main() {
 			if event.Type == linebot.EventTypeMessage {
 				switch message := event.Message.(type) {
 				case *linebot.TextMessage:
-					if _, err = bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(message.Text)).Do(); err != nil {
-						log.Print(err)
+					if err = onTextMessageEvent(bot, event, message); err != nil {
+						log.Println(err)
 					}
 				}
 			}
@@ -44,4 +48,18 @@ func main() {
 	if err := http.ListenAndServe(":"+os.Getenv("PORT"), nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func onTextMessageEvent(bot *linebot.Client, event linebot.Event, msg *linebot.TextMessage) error {
+	m := timeMatcher.FindStringSubmatch(msg.Text)
+	var reply string
+	if len(m) == 3 {
+		reply = fmt.Sprintf("%v時%v分ですね。わかりました。", m[1], m[2])
+	} else {
+		reply = msg.Text
+	}
+	if _, err := bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(reply)).Do(); err != nil {
+		return err
+	}
+	return nil
 }
