@@ -155,7 +155,7 @@ func Watch(wg *sync.WaitGroup, bot *linebot.Client, u *User) {
 		select {
 		case <-u.ctx.Done():
 			return
-		case <-time.After(time.Now().Sub(t)):
+		case <-time.After(t.Sub(time.Now())):
 		}
 
 		_, err := bot.PushMessage(u.Id, linebot.NewTextMessage("飲んだ?")).Do()
