@@ -21,6 +21,7 @@ import (
 const (
 	userPrefix = "user_"
 	location   = "Asia/Tokyo"
+	maxRetry   = 10
 )
 
 func init() {
@@ -37,16 +38,16 @@ type Store struct {
 	c    *redis.Client
 	mu   sync.Mutex
 	data map[string]*User
+	sche *Scheduler
 
-	wg  *sync.WaitGroup
-	bot *linebot.Client
+	wg *sync.WaitGroup
 }
 
-func NewStore(client *redis.Client, wg *sync.WaitGroup, bot *linebot.Client) *Store {
+func NewStore(client *redis.Client, wg *sync.WaitGroup, sche *Scheduler) *Store {
 	return &Store{
-		c:   client,
-		wg:  wg,
-		bot: bot,
+		c:    client,
+		wg:   wg,
+		sche: sche,
 	}
 }
 
@@ -87,7 +88,7 @@ func (s *Store) Load() error {
 
 	for _, user := range users {
 		s.wg.Add(1)
-		go Watch(s.wg, s.bot, user)
+		go s.sche.Watch(s.wg, user)
 	}
 
 	return nil
@@ -106,7 +107,7 @@ func (s *Store) Set(userId string, hour, minute int) error {
 	}
 	s.data[user.Id] = user
 	s.wg.Add(1)
-	go Watch(s.wg, s.bot, user)
+	go s.sche.Watch(s.wg, user)
 	return nil
 }
 
@@ -124,6 +125,8 @@ type User struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+	mu     sync.Mutex
+	sent   int
 }
 
 func NewUser(id string, hour, minute int) *User {
@@ -140,11 +143,54 @@ func (u *User) Data() string {
 	return fmt.Sprintf("%d:%d", u.Hour, u.Minute)
 }
 
+func (u *User) ResetCount() (reset bool) {
+	u.mu.Lock()
+	reset = u.sent != 0
+	u.sent = 0
+	u.mu.Unlock()
+	return
+}
+
+func (u *User) SendFirst(bot *linebot.Client) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.sent = 1
+	_, err := bot.PushMessage(u.Id, linebot.NewTextMessage("飲んだ?")).Do()
+	if err != nil {
+		u.sent = 0
+		log.Println(errors.Wrapf(err, "failed push message to (%v)", u.Id))
+	}
+}
+
+func (u *User) SendRemind(bot *linebot.Client) (tryNext bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.sent == 0 {
+		// have received response
+		return false
+	}
+	if u.sent > maxRetry {
+		u.sent = 0
+		return false
+	}
+	u.sent++
+	_, err := bot.PushMessage(u.Id, linebot.NewTextMessage("飲んだ"+strings.Repeat("?", u.sent))).Do()
+	if err != nil {
+		log.Println(errors.Wrapf(err, "failed push message to (%v)", u.Id))
+	}
+	return true
+}
+
 func (u *User) Close() {
 	u.cancel()
 }
 
-func Watch(wg *sync.WaitGroup, bot *linebot.Client, u *User) {
+type Scheduler struct {
+	bot      *linebot.Client
+	chRemind chan *User
+}
+
+func (s *Scheduler) Watch(wg *sync.WaitGroup, u *User) {
 	defer wg.Done()
 	for {
 		now := time.Now()
@@ -158,14 +204,59 @@ func Watch(wg *sync.WaitGroup, bot *linebot.Client, u *User) {
 		case <-time.After(t.Sub(time.Now())):
 		}
 
-		_, err := bot.PushMessage(u.Id, linebot.NewTextMessage("飲んだ?")).Do()
-		if err != nil {
-			log.Println(errors.Wrapf(err, "failed push message to (%v)", u.Id))
+		u.SendFirst(s.bot)
+
+		select {
+		case <-u.ctx.Done():
+			return
+		case s.chRemind <- u:
+		}
+	}
+}
+
+type Remind struct {
+	u     *User
+	timer <-chan time.Time
+}
+
+func (s *Scheduler) Reminder(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	queue := make([]Remind, 0)
+	var remind Remind
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case u := <-s.chRemind:
+			r := Remind{u: u, timer: time.After(10 * time.Minute)}
+			if remind.u == nil {
+				remind = r
+				continue
+			}
+			queue = append(queue, r)
+		case <-remind.timer:
+			if remind.u.SendRemind(s.bot) {
+				// requeue
+				queue = append(queue, Remind{u: remind.u, timer: time.After(10 * time.Minute)})
+			}
+
+			if len(queue) == 0 {
+				remind.u, remind.timer = nil, nil
+				continue
+			}
+			// deque
+			remind, queue = queue[0], queue[1:]
 		}
 	}
 }
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	wg := new(sync.WaitGroup)
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
 	bot, err := linebot.New(
 		os.Getenv("CHANNEL_SECRET"),
 		os.Getenv("CHANNEL_TOKEN"),
@@ -184,8 +275,12 @@ func main() {
 		Password: redisPassword,
 		DB:       redisDB,
 	})
-	wg := new(sync.WaitGroup)
-	store := NewStore(redisClient, wg, bot)
+
+	scheduler := &Scheduler{bot: bot, chRemind: make(chan *User)}
+	wg.Add(1)
+	go scheduler.Reminder(ctx, wg)
+
+	store := NewStore(redisClient, wg, scheduler)
 	if err = store.Load(); err != nil {
 		log.Fatal("load redis data : ", err)
 	}
@@ -264,5 +359,14 @@ func (h *Handler) parseToReply(userId, text string) (string, error) {
 		}
 		return fmt.Sprintf("%v時%v分ですね。わかりました。", hour, minute), nil
 	}
-	return text, errors.New("invalid message")
+	user := h.store.Get(userId)
+	if user == nil {
+		return "時間を設定してください", nil
+	}
+	if user.ResetCount() {
+		return "よくできました", nil
+	} else {
+		// TODO: send random message
+		return text, nil
+	}
 }
