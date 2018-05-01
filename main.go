@@ -32,7 +32,7 @@ func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	keys, err := s.c.Keys(userPrefix).Result()
+	keys, err := s.c.Keys(userPrefix+"*").Result()
 	if err != nil {
 		return errors.Wrap(err, "get all key")
 	}
