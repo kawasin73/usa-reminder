@@ -22,13 +22,13 @@ type User struct {
 	sent   int
 }
 
-func NewUser(id string, hour, minute int) *User {
+func NewUser(ctx context.Context, id string, hour, minute int) *User {
 	user := &User{
 		Id:     id,
 		Hour:   hour,
 		Minute: minute,
 	}
-	user.ctx, user.cancel = context.WithCancel(context.Background())
+	user.ctx, user.cancel = context.WithCancel(ctx)
 	return user
 }
 

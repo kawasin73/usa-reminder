@@ -57,7 +57,7 @@ func main() {
 	wg.Add(1)
 	go scheduler.Reminder(ctx, wg)
 
-	store := NewStore(redisClient, wg, scheduler)
+	store := NewStore(ctx, redisClient, wg, scheduler)
 	if err = store.Load(); err != nil {
 		log.Fatal("load redis data : ", err)
 	}

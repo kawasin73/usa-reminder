@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,14 +16,16 @@ type Store struct {
 	data map[string]*User
 	sche *Scheduler
 
-	wg *sync.WaitGroup
+	ctx context.Context
+	wg  *sync.WaitGroup
 }
 
-func NewStore(client *redis.Client, wg *sync.WaitGroup, sche *Scheduler) *Store {
+func NewStore(ctx context.Context, client *redis.Client, wg *sync.WaitGroup, sche *Scheduler) *Store {
 	return &Store{
 		c:    client,
 		wg:   wg,
 		sche: sche,
+		ctx:  ctx,
 	}
 }
 
@@ -51,7 +54,7 @@ func (s *Store) Load() error {
 		if err != nil {
 			return errors.Wrap(err, "parse minute")
 		}
-		user := NewUser(key[len(userPrefix):], hour, minute)
+		user := NewUser(s.ctx, key[len(userPrefix):], hour, minute)
 		users[user.Id] = user
 	}
 
@@ -72,7 +75,7 @@ func (s *Store) Load() error {
 func (s *Store) Set(userId string, hour, minute int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	user := NewUser(userId, hour, minute)
+	user := NewUser(s.ctx, userId, hour, minute)
 	_, err := s.c.Set(userPrefix+user.Id, user.Data(), 0).Result()
 	if err != nil {
 		return errors.Wrap(err, "set to redis")
