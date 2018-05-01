@@ -60,6 +60,7 @@ func (s *Store) Load() error {
 		}
 		users[user.Id] = user
 	}
+	s.data = users
 
 	return nil
 }
