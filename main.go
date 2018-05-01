@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-redis/redis"
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -18,7 +20,16 @@ import (
 
 const (
 	userPrefix = "user_"
+	location   = "Asia/Tokyo"
 )
+
+func init() {
+	loc, err := time.LoadLocation(location)
+	if err != nil {
+		loc = time.FixedZone(location, 9*60*60)
+	}
+	time.Local = loc
+}
 
 var timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
 
@@ -26,13 +37,24 @@ type Store struct {
 	c    *redis.Client
 	mu   sync.Mutex
 	data map[string]*User
+
+	wg  *sync.WaitGroup
+	bot *linebot.Client
+}
+
+func NewStore(client *redis.Client, wg *sync.WaitGroup, bot *linebot.Client) *Store {
+	return &Store{
+		c:   client,
+		wg:  wg,
+		bot: bot,
+	}
 }
 
 func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	keys, err := s.c.Keys(userPrefix+"*").Result()
+	keys, err := s.c.Keys(userPrefix + "*").Result()
 	if err != nil {
 		return errors.Wrap(err, "get all key")
 	}
@@ -53,14 +75,20 @@ func (s *Store) Load() error {
 		if err != nil {
 			return errors.Wrap(err, "parse minute")
 		}
-		user := &User{
-			Id:     key[len(userPrefix):],
-			Hour:   hour,
-			Minute: minute,
-		}
+		user := NewUser(key[len(userPrefix):], hour, minute)
 		users[user.Id] = user
 	}
+
+	for _, user := range s.data {
+		user.Close()
+	}
+
 	s.data = users
+
+	for _, user := range users {
+		s.wg.Add(1)
+		go Watch(s.wg, s.bot, user)
+	}
 
 	return nil
 }
@@ -68,16 +96,17 @@ func (s *Store) Load() error {
 func (s *Store) Set(userId string, hour, minute int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	user := &User{
-		Id:     userId,
-		Hour:   hour,
-		Minute: minute,
-	}
+	user := NewUser(userId, hour, minute)
 	_, err := s.c.Set(userPrefix+user.Id, user.Data(), 0).Result()
 	if err != nil {
 		errors.Wrap(err, "set to redis")
 	}
+	if old, ok := s.data[user.Id]; ok {
+		old.Close()
+	}
 	s.data[user.Id] = user
+	s.wg.Add(1)
+	go Watch(s.wg, s.bot, user)
 	return nil
 }
 
@@ -92,10 +121,48 @@ type User struct {
 	Id     string
 	Hour   int
 	Minute int
+
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func NewUser(id string, hour, minute int) *User {
+	user := &User{
+		Id:     id,
+		Hour:   hour,
+		Minute: minute,
+	}
+	user.ctx, user.cancel = context.WithCancel(context.Background())
+	return user
 }
 
 func (u *User) Data() string {
 	return fmt.Sprintf("%d:%d", u.Hour, u.Minute)
+}
+
+func (u *User) Close() {
+	u.cancel()
+}
+
+func Watch(wg *sync.WaitGroup, bot *linebot.Client, u *User) {
+	defer wg.Done()
+	for {
+		now := time.Now()
+		t := time.Date(now.Year(), now.Month(), now.Day(), u.Hour, u.Minute, 0, 0, time.Local)
+		if t.Before(now) {
+			t = t.Add(time.Hour * 24)
+		}
+		select {
+		case <-u.ctx.Done():
+			return
+		case <-time.After(time.Now().Sub(t)):
+		}
+
+		_, err := bot.PushMessage(u.Id, linebot.NewTextMessage("飲んだ?")).Do()
+		if err != nil {
+			log.Println(errors.Wrapf(err, "failed push message to (%v)", u.Id))
+		}
+	}
 }
 
 func main() {
@@ -117,7 +184,8 @@ func main() {
 		Password: redisPassword,
 		DB:       redisDB,
 	})
-	store := &Store{c: redisClient}
+	wg := new(sync.WaitGroup)
+	store := NewStore(redisClient, wg, bot)
 	if err = store.Load(); err != nil {
 		log.Fatal("load redis data : ", err)
 	}
