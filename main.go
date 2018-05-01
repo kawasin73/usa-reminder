@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-redis/redis"
 	"github.com/line/line-bot-sdk-go/linebot"
@@ -82,6 +80,13 @@ func (s *Store) Set(userId string, hour, minute int) error {
 	return nil
 }
 
+func (s *Store) Get(userId string) *User {
+	s.mu.Lock()
+	user, _ := s.data[userId]
+	s.mu.Unlock()
+	return user
+}
+
 type User struct {
 	Id     string
 	Hour   int
@@ -116,28 +121,13 @@ func main() {
 		log.Fatal("load redis data : ", err)
 	}
 
+	h := &Handler{
+		bot:   bot,
+		store: store,
+	}
 	// Setup HTTP Server for receiving requests from LINE platform
-	http.HandleFunc("/callback", func(w http.ResponseWriter, req *http.Request) {
-		events, err := bot.ParseRequest(req)
-		if err != nil {
-			if err == linebot.ErrInvalidSignature {
-				w.WriteHeader(400)
-			} else {
-				w.WriteHeader(500)
-			}
-			return
-		}
-		for _, event := range events {
-			if event.Type == linebot.EventTypeMessage {
-				switch message := event.Message.(type) {
-				case *linebot.TextMessage:
-					if err = onTextMessageEvent(bot, event, message); err != nil {
-						log.Println(err)
-					}
-				}
-			}
-		}
-	})
+	http.Handle("/callback", h)
+
 	// This is just sample code.
 	// For actual use, you must support HTTPS by using `ListenAndServeTLS`, a reverse proxy or something else.
 	if err := http.ListenAndServe(":"+os.Getenv("PORT"), nil); err != nil {
@@ -145,16 +135,65 @@ func main() {
 	}
 }
 
-func onTextMessageEvent(bot *linebot.Client, event linebot.Event, msg *linebot.TextMessage) error {
-	m := timeMatcher.FindStringSubmatch(msg.Text)
-	var reply string
-	if len(m) == 3 {
-		reply = fmt.Sprintf("%v時%v分ですね。わかりました。", m[1], m[2])
-	} else {
-		reply = msg.Text
+type Handler struct {
+	bot   *linebot.Client
+	store *Store
+}
+
+func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	events, err := h.bot.ParseRequest(req)
+	if err != nil {
+		if err == linebot.ErrInvalidSignature {
+			w.WriteHeader(400)
+		} else {
+			w.WriteHeader(500)
+		}
+		return
 	}
-	if _, err := bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(reply)).Do(); err != nil {
+	for _, event := range events {
+		if event.Type == linebot.EventTypeMessage {
+			switch message := event.Message.(type) {
+			case *linebot.TextMessage:
+				if err = h.onTextMessageEvent(event, message); err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}
+}
+
+func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessage) error {
+	reply, _ := h.parseToReply(event.Source.UserID, msg.Text)
+	if _, err := h.bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(reply)).Do(); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (h *Handler) parseToReply(userId, text string) (string, error) {
+	// TODO: create command
+	if text == "設定教えて" {
+		user := h.store.Get(userId)
+		if user == nil {
+			return "設定されてないですよ", nil
+		}
+		return fmt.Sprintf("%v時%v分に設定されています", user.Hour, user.Minute), nil
+	}
+	m := timeMatcher.FindStringSubmatch(text)
+	if len(m) == 3 {
+		hour, err := strconv.Atoi(m[1])
+		if err != nil {
+			return "何時ですか？", errors.Wrap(err, "parse hour")
+		}
+		minute, err := strconv.Atoi(m[2])
+		if err != nil {
+			return "何分ですか？", errors.Wrap(err, "parse minute")
+		}
+		err = h.store.Set(userId, hour, minute)
+		if err != nil {
+			return "時間の設定に失敗しました", errors.Wrap(err, "set time to store")
+		}
+		return fmt.Sprintf("%v時%v分ですね。わかりました。", hour, minute), nil
+	}
+	return text, errors.New("invalid message")
 }
