@@ -41,14 +41,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessage) error {
-	reply, _ := h.parseToReply(event.Source.UserID, msg.Text)
+	reply, _ := h.handleText(event.Source.UserID, msg.Text)
 	if _, err := h.bot.ReplyMessage(event.ReplyToken, linebot.NewTextMessage(reply)).Do(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (h *Handler) parseToReply(userId, text string) (string, error) {
+func (h *Handler) handleText(userId, text string) (string, error) {
 	// TODO: create command
 	if text == "設定教えて" {
 		user := h.store.Get(userId)

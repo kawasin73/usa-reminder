@@ -75,7 +75,7 @@ func (s *Store) Set(userId string, hour, minute int) error {
 	user := NewUser(userId, hour, minute)
 	_, err := s.c.Set(userPrefix+user.Id, user.Data(), 0).Result()
 	if err != nil {
-		errors.Wrap(err, "set to redis")
+		return errors.Wrap(err, "set to redis")
 	}
 	if old, ok := s.data[user.Id]; ok {
 		old.Close()
