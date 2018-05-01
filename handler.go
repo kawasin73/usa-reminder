@@ -58,11 +58,13 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 		return fmt.Sprintf("%v時%v分に設定されています", user.Hour, user.Minute), nil
 	}
 	if text == "ばいばい" {
-		if h.store.Del(userId) {
-			return "設定を削除しました。 ばいばい", nil
-		} else {
+		err := h.store.Del(userId)
+		if err == ErrNotFound {
 			return "設定されてないですよ", nil
+		} else if err != nil {
+			return "設定の削除に失敗しました", err
 		}
+		return "設定を削除しました。 ばいばい", nil
 	}
 	m := timeMatcher.FindStringSubmatch(text)
 	if len(m) == 3 {

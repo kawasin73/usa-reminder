@@ -10,6 +10,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	ErrNotFound = errors.New("user not found")
+)
+
 type Store struct {
 	c    *redis.Client
 	mu   sync.Mutex
@@ -96,14 +100,17 @@ func (s *Store) Get(userId string) *User {
 	return user
 }
 
-func (s *Store) Del(userId string) bool {
+func (s *Store) Del(userId string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.data[userId]
 	if !ok {
-		return false
+		return ErrNotFound
+	}
+	if _, err := s.c.Del(userPrefix + user.Id).Result(); err != nil {
+		return errors.Wrapf(err, "del from redis")
 	}
 	user.Close()
 	delete(s.data, userId)
-	return true
+	return nil
 }
