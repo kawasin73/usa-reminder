@@ -1,16 +1,96 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/go-redis/redis"
 	"github.com/line/line-bot-sdk-go/linebot"
+	"github.com/pkg/errors"
+)
+
+const (
+	userPrefix = "user_"
 )
 
 var timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
+
+type Store struct {
+	c    *redis.Client
+	mu   sync.Mutex
+	data map[string]*User
+}
+
+func (s *Store) Load() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	keys, err := s.c.Keys(userPrefix).Result()
+	if err != nil {
+		return errors.Wrap(err, "get all key")
+	}
+	users := make(map[string]*User, len(keys))
+
+	for _, key := range keys {
+		// TODO: MGET
+		data, err := s.c.Get(key).Result()
+		if err != nil {
+			return errors.Wrap(err, "get all key")
+		}
+		times := strings.Split(data, ":")
+		hour, err := strconv.Atoi(times[0])
+		if err != nil {
+			return errors.Wrap(err, "parse hour")
+		}
+		minute, err := strconv.Atoi(times[1])
+		if err != nil {
+			return errors.Wrap(err, "parse minute")
+		}
+		user := &User{
+			Id:     key[len(userPrefix):],
+			Hour:   hour,
+			Minute: minute,
+		}
+		users[user.Id] = user
+	}
+
+	return nil
+}
+
+func (s *Store) Set(userId string, hour, minute int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user := &User{
+		Id:     userId,
+		Hour:   hour,
+		Minute: minute,
+	}
+	_, err := s.c.Set(userPrefix+user.Id, user.Data(), 0).Result()
+	if err != nil {
+		errors.Wrap(err, "set to redis")
+	}
+	s.data[user.Id] = user
+	return nil
+}
+
+type User struct {
+	Id     string
+	Hour   int
+	Minute int
+}
+
+func (u *User) Data() string {
+	return fmt.Sprintf("%d:%d", u.Hour, u.Minute)
+}
 
 func main() {
 	bot, err := linebot.New(
@@ -19,6 +99,21 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal(err)
+	}
+	redisUrl, err := url.Parse(os.Getenv("REDIS_URL"))
+	if err != nil {
+		log.Fatal("parse redis url : ", err)
+	}
+	redisPassword, _ := redisUrl.User.Password()
+	redisDB := 0
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     redisUrl.Host,
+		Password: redisPassword,
+		DB:       redisDB,
+	})
+	store := &Store{c: redisClient}
+	if err = store.Load(); err != nil {
+		log.Fatal("load redis data : ", err)
 	}
 
 	// Setup HTTP Server for receiving requests from LINE platform
