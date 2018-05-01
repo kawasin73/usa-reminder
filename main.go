@@ -118,6 +118,18 @@ func (s *Store) Get(userId string) *User {
 	return user
 }
 
+func (s *Store) Del(userId string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.data[userId]
+	if !ok {
+		return false
+	}
+	user.Close()
+	delete(s.data, userId)
+	return true
+}
+
 type User struct {
 	Id     string
 	Hour   int
@@ -342,6 +354,13 @@ func (h *Handler) parseToReply(userId, text string) (string, error) {
 			return "設定されてないですよ", nil
 		}
 		return fmt.Sprintf("%v時%v分に設定されています", user.Hour, user.Minute), nil
+	}
+	if text == "ばいばい" {
+		if h.store.Del(userId) {
+			return "設定を削除しました。 ばいばい", nil
+		} else {
+			return "設定されてないですよ", nil
+		}
 	}
 	m := timeMatcher.FindStringSubmatch(text)
 	if len(m) == 3 {
