@@ -63,7 +63,7 @@ func (u *User) SendRemind(bot *linebot.Client) (tryNext bool) {
 		return false
 	}
 	if u.sent > maxRetry {
-		u.sent = 0
+		// stop remind roop and wait for reply
 		return false
 	}
 	u.sent++
