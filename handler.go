@@ -11,8 +11,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
-
 type Handler struct {
 	bot   *linebot.Client
 	store *Store
@@ -48,6 +46,11 @@ func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessa
 	return nil
 }
 
+var (
+	timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
+	deleteMatcher = regexp.MustCompile("[削除|解除]")
+)
+
 func (h *Handler) handleText(userId, text string) (string, error) {
 	// TODO: create command
 	if text == "設定教えて" {
@@ -57,7 +60,7 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 		}
 		return fmt.Sprintf("%v時%v分に設定されています", user.Hour, user.Minute), nil
 	}
-	if text == "ばいばい" {
+	if deleteMatcher.MatchString(text) {
 		err := h.store.Del(userId)
 		if err == ErrNotFound {
 			return "設定されてないですよ", nil
