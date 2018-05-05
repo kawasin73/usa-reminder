@@ -50,6 +50,7 @@ var (
 	timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
 	time2Matcher = regexp.MustCompile("([0-9]+)[:|：]([0-9]+)")
 	deleteMatcher = regexp.MustCompile("[削除|解除]")
+	doneMatcher = regexp.MustCompile("[飲んだ|のんだ|はい|うん|のみ|飲み|OK|ok|おっけ|オッケ|もち]")
 	NotTimeCommand = errors.New("not time command")
 )
 
@@ -103,10 +104,9 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 	if user == nil {
 		return "時間を設定してください", nil
 	}
-	if user.ResetCount() {
+	if doneMatcher.MatchString(text) && user.ResetCount() {
 		return "よくできました", nil
-	} else {
-		// TODO: send random message
-		return text, nil
 	}
+	// TODO: send random message
+	return text, nil
 }
