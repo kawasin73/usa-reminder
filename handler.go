@@ -48,8 +48,29 @@ func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessa
 
 var (
 	timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
+	time2Matcher = regexp.MustCompile("([0-9]+)[:|：]([0-9]+)")
 	deleteMatcher = regexp.MustCompile("[削除|解除]")
+	NotTimeCommand = errors.New("not time command")
 )
+
+func parseTime(text string) (hour, minute int, err error) {
+	m := timeMatcher.FindStringSubmatch(text)
+	if len(m) != 3 {
+		m = time2Matcher.FindStringSubmatch(text)
+	}
+	if len(m) != 3 {
+		return 0, 0, NotTimeCommand
+	}
+	hour, err = strconv.Atoi(m[1])
+	if err != nil {
+		return 0,0, errors.Wrap(err, "parse hour")
+	}
+	minute, err = strconv.Atoi(m[2])
+	if err != nil {
+		return 0,0, errors.Wrap(err, "parse minute")
+	}
+	return hour, minute, nil
+}
 
 func (h *Handler) handleText(userId, text string) (string, error) {
 	// TODO: create command
@@ -69,21 +90,14 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 		}
 		return "設定を削除しました。 ばいばい", nil
 	}
-	m := timeMatcher.FindStringSubmatch(text)
-	if len(m) == 3 {
-		hour, err := strconv.Atoi(m[1])
-		if err != nil {
-			return "何時ですか？", errors.Wrap(err, "parse hour")
-		}
-		minute, err := strconv.Atoi(m[2])
-		if err != nil {
-			return "何分ですか？", errors.Wrap(err, "parse minute")
-		}
+	if hour, minute, err := parseTime(text); err == nil {
 		err = h.store.Set(userId, hour, minute)
 		if err != nil {
 			return "時間の設定に失敗しました", errors.Wrap(err, "set time to store")
 		}
 		return fmt.Sprintf("%v時%v分ですね。わかりました。", hour, minute), nil
+	} else if err != NotTimeCommand {
+		return "時間がおかしいよ", err
 	}
 	user := h.store.Get(userId)
 	if user == nil {
