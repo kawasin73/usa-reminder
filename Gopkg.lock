@@ -17,6 +17,12 @@
   version = "v6.10.2"
 
 [[projects]]
+  name = "github.com/kawasin73/hcron"
+  packages = ["."]
+  revision = "1f8b42143a0d9c5eff68eab52c8972d95376a816"
+  version = "v0.1"
+
+[[projects]]
   name = "github.com/line/line-bot-sdk-go"
   packages = ["linebot"]
   revision = "3a7d66f5efce6ac202f650134609f9d6d163a640"
@@ -40,6 +46,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "08cb6ccb4870fe94de6350065e7885d534931867034d510b2d5bb9bae4936070"
+  inputs-digest = "8f02b7fc08731b77e32c433085413cad4d4994683acaa768e929587b87e2d955"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -44,3 +44,7 @@
 [[constraint]]
   name = "github.com/pkg/errors"
   version = "0.8.0"
+
+[[constraint]]
+  name = "github.com/kawasin73/hcron"
+  version = "0.1.0"

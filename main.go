@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"github.com/kawasin73/hcron"
 	"github.com/line/line-bot-sdk-go/linebot"
 )
 
@@ -30,8 +31,10 @@ func init() {
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := new(sync.WaitGroup)
+	cron := hcron.NewCron(wg, 10)
 	defer func() {
 		cancel()
+		cron.Close()
 		wg.Wait()
 	}()
 	bot, err := linebot.New(
@@ -53,9 +56,7 @@ func main() {
 		DB:       redisDB,
 	})
 
-	scheduler := &Scheduler{bot: bot, chRemind: make(chan *User)}
-	wg.Add(1)
-	go scheduler.Reminder(ctx, wg)
+	scheduler := &Scheduler{bot: bot, cron: cron}
 
 	store := NewStore(ctx, redisClient, wg, scheduler)
 	if err = store.Load(); err != nil {

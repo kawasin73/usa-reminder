@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/line/line-bot-sdk-go/linebot"
 	"github.com/pkg/errors"
@@ -42,6 +43,14 @@ func (u *User) ResetCount() (reset bool) {
 	u.sent = 0
 	u.mu.Unlock()
 	return
+}
+
+func (u *User) nextTime(now time.Time) time.Time {
+	t := time.Date(now.Year(), now.Month(), now.Day(), u.Hour, u.Minute, 0, 0, time.Local)
+	if t.Before(now) {
+		t = t.Add(time.Hour * 24)
+	}
+	return t
 }
 
 func (u *User) SendFirst(bot *linebot.Client) {

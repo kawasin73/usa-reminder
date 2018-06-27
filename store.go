@@ -69,8 +69,7 @@ func (s *Store) Load() error {
 	s.data = users
 
 	for _, user := range users {
-		s.wg.Add(1)
-		go s.sche.Watch(s.wg, user)
+		s.sche.InitRemind(user)
 	}
 
 	return nil
@@ -88,8 +87,7 @@ func (s *Store) Set(userId string, hour, minute int) error {
 		old.Close()
 	}
 	s.data[user.Id] = user
-	s.wg.Add(1)
-	go s.sche.Watch(s.wg, user)
+	s.sche.InitRemind(user)
 	return nil
 }
 
