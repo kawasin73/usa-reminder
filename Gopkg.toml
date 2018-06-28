@@ -46,5 +46,5 @@
   version = "0.8.0"
 
 [[constraint]]
-  name = "github.com/kawasin73/hcron"
-  version = "0.1.0"
+  name = "github.com/kawasin73/htask"
+  version = "0.2.0"
