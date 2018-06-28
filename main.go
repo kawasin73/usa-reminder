@@ -31,7 +31,7 @@ func init() {
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := new(sync.WaitGroup)
-	hsched := htask.NewScheduler(wg, 10)
+	hsched := htask.NewScheduler(wg, 0)
 	defer func() {
 		cancel()
 		hsched.Close()
