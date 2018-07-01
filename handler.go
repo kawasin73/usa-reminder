@@ -47,10 +47,10 @@ func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessa
 }
 
 var (
-	timeMatcher = regexp.MustCompile("([0-9]+)時([0-9]+)分")
-	time2Matcher = regexp.MustCompile("([0-9]+)[:|：]([0-9]+)")
-	deleteMatcher = regexp.MustCompile("[削除|解除]")
-	doneMatcher = regexp.MustCompile("[飲んだ|のんだ|はい|うん|のみ|飲み|OK|ok|おっけ|オッケ|もち]")
+	timeMatcher    = regexp.MustCompile("([0-9]+)時([0-9]+)分")
+	time2Matcher   = regexp.MustCompile("([0-9]+)[:|：]([0-9]+)")
+	deleteMatcher  = regexp.MustCompile("削除|解除")
+	doneMatcher    = regexp.MustCompile("飲んだ|のんだ|はい|うん|のみ|飲み|OK|ok|おっけ|オッケ|もち")
 	NotTimeCommand = errors.New("not time command")
 )
 
@@ -64,11 +64,11 @@ func parseTime(text string) (hour, minute int, err error) {
 	}
 	hour, err = strconv.Atoi(m[1])
 	if err != nil {
-		return 0,0, errors.Wrap(err, "parse hour")
+		return 0, 0, errors.Wrap(err, "parse hour")
 	}
 	minute, err = strconv.Atoi(m[2])
 	if err != nil {
-		return 0,0, errors.Wrap(err, "parse minute")
+		return 0, 0, errors.Wrap(err, "parse minute")
 	}
 	return hour, minute, nil
 }
