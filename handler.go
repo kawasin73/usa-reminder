@@ -78,6 +78,7 @@ func parseTime(text string) (hour, minute int, err error) {
 	return hour, minute, nil
 }
 
+// TODO: create command
 func (h *Handler) handleText(userId, text string) (string, error) {
 	user := h.store.Get(userId)
 	if user != nil && user.SetNotifyName(text) {
@@ -96,7 +97,14 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 		user.SetNotifyId(notifyId)
 		return "相手の名前を教えて！", nil
 	}
-	// TODO: create command
+	if text == "通知削除" {
+		if user == nil {
+			return "時間が設定されてないよ", nil
+		}
+		user.ClearNotify()
+		err := h.store.Update(user)
+		return "通知設定を全てリセットしたよ", err
+	}
 	if text == "設定教えて" {
 		if user == nil {
 			return "設定されてないですよ", nil

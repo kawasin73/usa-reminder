@@ -132,6 +132,12 @@ func (u *User) SetNotifyName(name string) bool {
 	return true
 }
 
+func (u *User) ClearNotify() {
+	u.mu.Lock()
+	u.Notifies = nil
+	u.mu.Unlock()
+}
+
 func (u *User) NotifyDone(bot *linebot.Client) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
