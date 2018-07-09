@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/line/line-bot-sdk-go/linebot"
 	"github.com/pkg/errors"
@@ -46,6 +47,10 @@ func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessa
 	return nil
 }
 
+const (
+	notifyIDPrefix = "lineid:"
+)
+
 var (
 	timeMatcher    = regexp.MustCompile("([0-9]+)時([0-9]+)分")
 	time2Matcher   = regexp.MustCompile("([0-9]+)[:|：]([0-9]+)")
@@ -74,9 +79,23 @@ func parseTime(text string) (hour, minute int, err error) {
 }
 
 func (h *Handler) handleText(userId, text string) (string, error) {
+	user := h.store.Get(userId)
+	if user != nil && user.SetNotifyName(text) {
+		return text + "さんにこれからは通知するね", nil
+	}
+	if text == "通知番号" {
+		return notifyIDPrefix + userId, nil
+	}
+	if strings.HasPrefix(text, notifyIDPrefix) {
+		if user == nil {
+			return "通知するときはまず時間を設定してね", nil
+		}
+		notifyId := strings.TrimPrefix(text, notifyIDPrefix)
+		user.SetNotifyId(notifyId)
+		return "相手の名前を教えて！", nil
+	}
 	// TODO: create command
 	if text == "設定教えて" {
-		user := h.store.Get(userId)
 		if user == nil {
 			return "設定されてないですよ", nil
 		}
@@ -100,11 +119,11 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 	} else if err != NotTimeCommand {
 		return "時間がおかしいよ", err
 	}
-	user := h.store.Get(userId)
 	if user == nil {
 		return "時間を設定してください", nil
 	}
 	if doneMatcher.MatchString(text) && user.ResetCount() {
+		user.NotifyDone(h.bot)
 		return "よくできました", nil
 	}
 	// TODO: send random message

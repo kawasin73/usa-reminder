@@ -15,7 +15,7 @@ var (
 )
 
 type Store struct {
-	c    *redis.Client
+	db   *redis.Client
 	mu   sync.Mutex
 	data map[string]*User
 	sche *Scheduler
@@ -26,7 +26,7 @@ type Store struct {
 
 func NewStore(ctx context.Context, client *redis.Client, wg *sync.WaitGroup, sche *Scheduler) *Store {
 	return &Store{
-		c:    client,
+		db:   client,
 		wg:   wg,
 		sche: sche,
 		ctx:  ctx,
@@ -37,7 +37,7 @@ func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	keys, err := s.c.Keys(userPrefix + "*").Result()
+	keys, err := s.db.Keys(userPrefix + "*").Result()
 	if err != nil {
 		return errors.Wrap(err, "get all key")
 	}
@@ -45,7 +45,7 @@ func (s *Store) Load() error {
 
 	for _, key := range keys {
 		// TODO: MGET
-		data, err := s.c.Get(key).Result()
+		data, err := s.db.Get(key).Result()
 		if err != nil {
 			return errors.Wrap(err, "get all key")
 		}
@@ -58,7 +58,7 @@ func (s *Store) Load() error {
 		if err != nil {
 			return errors.Wrap(err, "parse minute")
 		}
-		user := NewUser(s.ctx, key[len(userPrefix):], hour, minute)
+		user := NewUser(s.ctx, key[len(userPrefix):], hour, minute, nil)
 		users[user.Id] = user
 	}
 
@@ -78,13 +78,14 @@ func (s *Store) Load() error {
 func (s *Store) Set(userId string, hour, minute int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	user := NewUser(s.ctx, userId, hour, minute)
-	_, err := s.c.Set(userPrefix+user.Id, user.Data(), 0).Result()
+	prevUser, _ := s.data[userId]
+	user := NewUser(s.ctx, userId, hour, minute, prevUser)
+	_, err := s.db.Set(userPrefix+user.Id, user.Data(), 0).Result()
 	if err != nil {
 		return errors.Wrap(err, "set to redis")
 	}
-	if old, ok := s.data[user.Id]; ok {
-		old.Close()
+	if prevUser != nil {
+		prevUser.Close()
 	}
 	s.data[user.Id] = user
 	s.sche.InitRemind(user)
@@ -105,7 +106,7 @@ func (s *Store) Del(userId string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	if _, err := s.c.Del(userPrefix + user.Id).Result(); err != nil {
+	if _, err := s.db.Del(userPrefix + user.Id).Result(); err != nil {
 		return errors.Wrapf(err, "del from redis")
 	}
 	user.Close()

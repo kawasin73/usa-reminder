@@ -13,23 +13,35 @@ import (
 )
 
 type User struct {
-	Id     string
-	Hour   int
-	Minute int
+	Id       string
+	Hour     int
+	Minute   int
+	Notifies []Notify
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.Mutex
-	sent   int
+	ctx         context.Context
+	cancel      context.CancelFunc
+	mu          sync.Mutex
+	sent        int
+	tmpNotifyId string
 }
 
-func NewUser(ctx context.Context, id string, hour, minute int) *User {
+type Notify struct {
+	Id   string
+	Name string
+}
+
+func NewUser(ctx context.Context, id string, hour, minute int, prevUser *User) *User {
 	user := &User{
 		Id:     id,
 		Hour:   hour,
 		Minute: minute,
 	}
 	user.ctx, user.cancel = context.WithCancel(ctx)
+	if prevUser != nil {
+		prevUser.mu.Lock()
+		user.Notifies = append(user.Notifies, prevUser.Notifies...)
+		prevUser.mu.Unlock()
+	}
 	return user
 }
 
@@ -73,6 +85,7 @@ func (u *User) SendRemind(bot *linebot.Client) (tryNext bool) {
 	}
 	if u.sent > maxRetry {
 		// stop remind roop and wait for reply
+		u.notifyNotDone(bot)
 		return false
 	}
 	u.sent++
@@ -81,6 +94,49 @@ func (u *User) SendRemind(bot *linebot.Client) (tryNext bool) {
 		log.Println(errors.Wrapf(err, "failed push message to (%v)", u.Id))
 	}
 	return true
+}
+
+func (u *User) SetNotifyId(id string) {
+	u.mu.Lock()
+	u.tmpNotifyId = id
+	u.mu.Unlock()
+}
+
+func (u *User) SetNotifyName(name string) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.tmpNotifyId == "" {
+		return false
+	}
+	// search duplicated id
+	for i, n := range u.Notifies {
+		if n.Id == u.tmpNotifyId {
+			u.Notifies[i].Name = name
+			u.tmpNotifyId = ""
+			return true
+		}
+	}
+	u.Notifies = append(u.Notifies, Notify{Id: u.tmpNotifyId, Name: name})
+	u.tmpNotifyId = ""
+	return true
+}
+
+func (u *User) NotifyDone(bot *linebot.Client) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	for _, n := range u.Notifies {
+		if _, err := bot.PushMessage(n.Id, linebot.NewTextMessage(n.Name+"ちゃんが今飲んだよ！")).Do(); err != nil {
+			log.Println("failed to notify not done : ", err)
+		}
+	}
+}
+
+func (u *User) notifyNotDone(bot *linebot.Client) {
+	for _, n := range u.Notifies {
+		if _, err := bot.PushMessage(n.Id, linebot.NewTextMessage(n.Name+"ちゃんは今日まだ飲んでないよ〜")).Do(); err != nil {
+			log.Println("failed to notify not done : ", err)
+		}
+	}
 }
 
 func (u *User) Close() {
