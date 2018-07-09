@@ -41,9 +41,10 @@ func NewStore(ctx context.Context, client *redis.Client, wg *sync.WaitGroup, sch
 
 func (s *Store) Migrate() error {
 	_, err := s.db.Get(keyVersion).Result()
-	if err != redis.Nil {
+	if err == nil {
 		return nil
-	} else if err != nil {
+	}
+	if err != redis.Nil {
 		return errors.Wrap(err, "get version")
 	}
 
