@@ -12,6 +12,7 @@ import (
 
 var (
 	ErrNotFound = errors.New("user not found")
+	ErrClosed   = errors.New("user is already closed")
 )
 
 type Store struct {
@@ -75,7 +76,8 @@ func (s *Store) Load() error {
 	return nil
 }
 
-func (s *Store) Set(userId string, hour, minute int) error {
+// Create set new time.
+func (s *Store) Create(userId string, hour, minute int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	prevUser, _ := s.data[userId]
@@ -89,6 +91,22 @@ func (s *Store) Set(userId string, hour, minute int) error {
 	}
 	s.data[user.Id] = user
 	s.sche.InitRemind(user)
+	return nil
+}
+
+// Update set new notify
+func (s *Store) Update(user *User) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	select {
+	case <-user.ctx.Done():
+		return ErrClosed
+	default:
+	}
+	_, err := s.db.Set(userPrefix+user.Id, user.Data(), 0).Result()
+	if err != nil {
+		return errors.Wrap(err, "set to redis")
+	}
 	return nil
 }
 

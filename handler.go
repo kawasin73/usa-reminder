@@ -81,9 +81,11 @@ func parseTime(text string) (hour, minute int, err error) {
 func (h *Handler) handleText(userId, text string) (string, error) {
 	user := h.store.Get(userId)
 	if user != nil && user.SetNotifyName(text) {
-		return text + "さんにこれからは通知するね", nil
+		// TODO: rollback when error
+		err := h.store.Update(user)
+		return text + "さんにこれからは通知するね", err
 	}
-	if text == "通知番号" {
+	if text == "通知番号教えて" {
 		return notifyIDPrefix + userId, nil
 	}
 	if strings.HasPrefix(text, notifyIDPrefix) {
@@ -111,7 +113,7 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 		return "設定を削除しました。 ばいばい", nil
 	}
 	if hour, minute, err := parseTime(text); err == nil {
-		err = h.store.Set(userId, hour, minute)
+		err = h.store.Create(userId, hour, minute)
 		if err != nil {
 			return "時間の設定に失敗しました", errors.Wrap(err, "set time to store")
 		}
