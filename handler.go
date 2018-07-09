@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/line/line-bot-sdk-go/linebot"
 	"github.com/pkg/errors"
@@ -46,6 +47,10 @@ func (h *Handler) onTextMessageEvent(event linebot.Event, msg *linebot.TextMessa
 	return nil
 }
 
+const (
+	notifyIDPrefix = "lineid:"
+)
+
 var (
 	timeMatcher    = regexp.MustCompile("([0-9]+)時([0-9]+)分")
 	time2Matcher   = regexp.MustCompile("([0-9]+)[:|：]([0-9]+)")
@@ -73,10 +78,34 @@ func parseTime(text string) (hour, minute int, err error) {
 	return hour, minute, nil
 }
 
+// TODO: create command
 func (h *Handler) handleText(userId, text string) (string, error) {
-	// TODO: create command
+	user := h.store.Get(userId)
+	if user != nil && user.SetNotifyName(text) {
+		// TODO: rollback when error
+		err := h.store.Update(user)
+		return text + " にこれからは通知するね", err
+	}
+	if text == "通知番号教えて" {
+		return notifyIDPrefix + userId, nil
+	}
+	if strings.HasPrefix(text, notifyIDPrefix) {
+		if user == nil {
+			return "通知するときはまず時間を設定してね", nil
+		}
+		notifyId := strings.TrimPrefix(text, notifyIDPrefix)
+		user.SetNotifyId(notifyId)
+		return "相手の名前を教えて！", nil
+	}
+	if text == "通知削除" {
+		if user == nil {
+			return "時間が設定されてないよ", nil
+		}
+		user.ClearNotify()
+		err := h.store.Update(user)
+		return "通知設定を全てリセットしたよ", err
+	}
 	if text == "設定教えて" {
-		user := h.store.Get(userId)
 		if user == nil {
 			return "設定されてないですよ", nil
 		}
@@ -92,7 +121,7 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 		return "設定を削除しました。 ばいばい", nil
 	}
 	if hour, minute, err := parseTime(text); err == nil {
-		err = h.store.Set(userId, hour, minute)
+		err = h.store.Create(userId, hour, minute)
 		if err != nil {
 			return "時間の設定に失敗しました", errors.Wrap(err, "set time to store")
 		}
@@ -100,11 +129,11 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 	} else if err != NotTimeCommand {
 		return "時間がおかしいよ", err
 	}
-	user := h.store.Get(userId)
 	if user == nil {
 		return "時間を設定してください", nil
 	}
 	if doneMatcher.MatchString(text) && user.ResetCount() {
+		user.NotifyDone(h.bot)
 		return "よくできました", nil
 	}
 	// TODO: send random message
