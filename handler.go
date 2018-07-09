@@ -83,7 +83,7 @@ func (h *Handler) handleText(userId, text string) (string, error) {
 	if user != nil && user.SetNotifyName(text) {
 		// TODO: rollback when error
 		err := h.store.Update(user)
-		return text + "さんにこれからは通知するね", err
+		return text + " にこれからは通知するね", err
 	}
 	if text == "通知番号教えて" {
 		return notifyIDPrefix + userId, nil

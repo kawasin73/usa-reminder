@@ -10,6 +10,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	userPrefix = "user_"
+	keyVersion = "version"
+)
+
 var (
 	ErrNotFound = errors.New("user not found")
 	ErrClosed   = errors.New("user is already closed")
@@ -34,6 +39,49 @@ func NewStore(ctx context.Context, client *redis.Client, wg *sync.WaitGroup, sch
 	}
 }
 
+func (s *Store) Migrate() error {
+	_, err := s.db.Get(keyVersion).Result()
+	if err != redis.Nil {
+		return nil
+	} else if err != nil {
+		return errors.Wrap(err, "get version")
+	}
+
+	keys, err := s.db.Keys(userPrefix + "*").Result()
+	if err != nil {
+		return errors.Wrap(err, "get all key")
+	}
+
+	for _, key := range keys {
+		data, err := s.db.Get(key).Result()
+		if err != nil {
+			return errors.Wrap(err, "get all key")
+		}
+		times := strings.Split(data, ":")
+		hour, err := strconv.Atoi(times[0])
+		if err != nil {
+			return errors.Wrap(err, "parse hour")
+		}
+		minute, err := strconv.Atoi(times[1])
+		if err != nil {
+			return errors.Wrap(err, "parse minute")
+		}
+		user := NewUser(s.ctx, key[len(userPrefix):], hour, minute, nil)
+		data, err = user.Data()
+		if err != nil {
+			return errors.Wrap(err, "encode to json")
+		}
+
+		_, err = s.db.Set(userPrefix+user.Id, data, 0).Result()
+		if err != nil {
+			return errors.Wrap(err, "set to redis")
+		}
+	}
+
+	s.db.Set(keyVersion, "1", 0).Result()
+	return nil
+}
+
 func (s *Store) Load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -50,16 +98,10 @@ func (s *Store) Load() error {
 		if err != nil {
 			return errors.Wrap(err, "get all key")
 		}
-		times := strings.Split(data, ":")
-		hour, err := strconv.Atoi(times[0])
+		user, err := DecodeUser(s.ctx, data)
 		if err != nil {
-			return errors.Wrap(err, "parse hour")
+			return errors.Wrap(err, "decode user")
 		}
-		minute, err := strconv.Atoi(times[1])
-		if err != nil {
-			return errors.Wrap(err, "parse minute")
-		}
-		user := NewUser(s.ctx, key[len(userPrefix):], hour, minute, nil)
 		users[user.Id] = user
 	}
 
@@ -82,7 +124,11 @@ func (s *Store) Create(userId string, hour, minute int) error {
 	defer s.mu.Unlock()
 	prevUser, _ := s.data[userId]
 	user := NewUser(s.ctx, userId, hour, minute, prevUser)
-	_, err := s.db.Set(userPrefix+user.Id, user.Data(), 0).Result()
+	data, err := user.Data()
+	if err != nil {
+		return errors.Wrap(err, "encode")
+	}
+	_, err = s.db.Set(userPrefix+user.Id, data, 0).Result()
 	if err != nil {
 		return errors.Wrap(err, "set to redis")
 	}
@@ -103,7 +149,11 @@ func (s *Store) Update(user *User) error {
 		return ErrClosed
 	default:
 	}
-	_, err := s.db.Set(userPrefix+user.Id, user.Data(), 0).Result()
+	data, err := user.Data()
+	if err != nil {
+		return errors.Wrap(err, "encode")
+	}
+	_, err = s.db.Set(userPrefix+user.Id, data, 0).Result()
 	if err != nil {
 		return errors.Wrap(err, "set to redis")
 	}

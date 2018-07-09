@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	userPrefix = "user_"
-	location   = "Asia/Tokyo"
-	maxRetry   = 10
+	location = "Asia/Tokyo"
+	maxRetry = 10
 )
 
 func init() {
@@ -59,6 +58,9 @@ func main() {
 	scheduler := &Scheduler{bot: bot, scheduler: hsched}
 
 	store := NewStore(ctx, redisClient, wg, scheduler)
+	if err = store.Migrate(); err != nil {
+		log.Fatal("migration failed : ", err)
+	}
 	if err = store.Load(); err != nil {
 		log.Fatal("load redis data : ", err)
 	}

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"log"
 	"strings"
 	"sync"
@@ -13,10 +13,10 @@ import (
 )
 
 type User struct {
-	Id       string
-	Hour     int
-	Minute   int
-	Notifies []Notify
+	Id       string   `json:"id"`
+	Hour     int      `json:"hour"`
+	Minute   int      `json:"minute"`
+	Notifies []Notify `json:"notifies"`
 
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -26,8 +26,8 @@ type User struct {
 }
 
 type Notify struct {
-	Id   string
-	Name string
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func NewUser(ctx context.Context, id string, hour, minute int, prevUser *User) *User {
@@ -45,8 +45,19 @@ func NewUser(ctx context.Context, id string, hour, minute int, prevUser *User) *
 	return user
 }
 
-func (u *User) Data() string {
-	return fmt.Sprintf("%d:%d", u.Hour, u.Minute)
+func DecodeUser(ctx context.Context, data string) (*User, error) {
+	user := new(User)
+	err := json.Unmarshal([]byte(data), user)
+	if err != nil {
+		return nil, err
+	}
+	user.ctx, user.cancel = context.WithCancel(ctx)
+	return user, nil
+}
+
+func (u *User) Data() (string, error) {
+	data, err := json.Marshal(u)
+	return string(data), err
 }
 
 func (u *User) ResetCount() (reset bool) {
@@ -125,7 +136,7 @@ func (u *User) NotifyDone(bot *linebot.Client) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	for _, n := range u.Notifies {
-		if _, err := bot.PushMessage(n.Id, linebot.NewTextMessage(n.Name+"ちゃんが今飲んだよ！")).Do(); err != nil {
+		if _, err := bot.PushMessage(n.Id, linebot.NewTextMessage(n.Name+" が今飲んだよ！")).Do(); err != nil {
 			log.Println("failed to notify not done : ", err)
 		}
 	}
@@ -133,7 +144,7 @@ func (u *User) NotifyDone(bot *linebot.Client) {
 
 func (u *User) notifyNotDone(bot *linebot.Client) {
 	for _, n := range u.Notifies {
-		if _, err := bot.PushMessage(n.Id, linebot.NewTextMessage(n.Name+"ちゃんは今日まだ飲んでないよ〜")).Do(); err != nil {
+		if _, err := bot.PushMessage(n.Id, linebot.NewTextMessage(n.Name+" は今日まだ飲んでないよ〜")).Do(); err != nil {
 			log.Println("failed to notify not done : ", err)
 		}
 	}
