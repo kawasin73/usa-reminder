@@ -16,6 +16,8 @@ FROM alpine:latest
 
 LABEL maintainer="kawasin73@gmail.com"
 
+RUN apk add --no-cache ca-certificates
+
 ENV PORT=3000
 
 EXPOSE 3000
