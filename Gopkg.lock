@@ -2,6 +2,7 @@
 
 
 [[projects]]
+  digest = "1:6361fc2f37f6a779924d408a955883db8ae02255a26473517b03cd0a80f8cdd5"
   name = "github.com/go-redis/redis"
   packages = [
     ".",
@@ -11,41 +12,55 @@
     "internal/pool",
     "internal/proto",
     "internal/singleflight",
-    "internal/util"
+    "internal/util",
   ]
+  pruneopts = "UT"
   revision = "877867d2845fbaf86798befe410b6ceb6f5c29a3"
   version = "v6.10.2"
 
 [[projects]]
+  digest = "1:83e6957265acbf0e4fa9f116371df3867e2c62d0ce9c163511a7d29f734d5368"
   name = "github.com/kawasin73/htask"
   packages = ["."]
+  pruneopts = "UT"
   revision = "7d496cd950eb9a66599491be62d7efc62777123b"
   version = "v0.3.0"
 
 [[projects]]
+  digest = "1:5b7de7b6e3610770999b2f639225eaa36ca42a3cd2c27b84a4a36239b0749669"
   name = "github.com/line/line-bot-sdk-go"
   packages = ["linebot"]
+  pruneopts = "UT"
   revision = "3a7d66f5efce6ac202f650134609f9d6d163a640"
   version = "1.0.0"
 
 [[projects]]
+  digest = "1:40e195917a951a8bf867cd05de2a46aaf1806c50cf92eebf4c16f78cd196f747"
   name = "github.com/pkg/errors"
   packages = ["."]
+  pruneopts = "UT"
   revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
   version = "v0.8.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:d6b719875cf8091fbab38527d81d34e71f4521b9ee9ccfbd4a32cff2ac5af96e"
   name = "golang.org/x/net"
   packages = [
     "context",
-    "context/ctxhttp"
+    "context/ctxhttp",
   ]
+  pruneopts = "UT"
   revision = "5f9ae10d9af5b1c89ae6904293b14b064d4ada23"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "116e15c4deecab170220d06899503033bde9ce154f1d022feb79957750979bd1"
+  input-imports = [
+    "github.com/go-redis/redis",
+    "github.com/kawasin73/htask",
+    "github.com/line/line-bot-sdk-go/linebot",
+    "github.com/pkg/errors",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
