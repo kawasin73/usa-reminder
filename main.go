@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -71,6 +72,12 @@ func main() {
 	}
 	// Setup HTTP Server for receiving requests from LINE platform
 	http.Handle("/callback", h)
+	http.HandleFunc("/healthcheck", func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.WriteString(w, "OK")
+		if err != nil {
+			log.Println("failed to write health OK", err)
+		}
+	})
 
 	// This is just sample code.
 	// For actual use, you must support HTTPS by using `ListenAndServeTLS`, a reverse proxy or something else.
