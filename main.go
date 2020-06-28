@@ -17,7 +17,7 @@ import (
 
 const (
 	location = "Asia/Tokyo"
-	maxRetry = 10
+	maxRetry = 2
 )
 
 func init() {
